@@ -9,7 +9,8 @@ class DeleteLoading extends DeleteState {}
 
 class DeleteSuccess extends DeleteState {
   final int count;
-  const DeleteSuccess({required this.count});
+  final bool quiet;
+  const DeleteSuccess({required this.count, this.quiet = false});
 }
 
 class DeleteError extends DeleteState {

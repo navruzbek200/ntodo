@@ -4,8 +4,6 @@ import '../../features/intro/splash_page.dart';
 import '../../features/auth/presentation/pages/onboarding_page.dart';
 import '../../features/auth/presentation/pages/sign_up_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
-import '../../features/todo/domain/entities/get_entity.dart';
-import '../../features/todo/presentation/pages/task_edit_page.dart';
 import '../../features/todo/presentation/pages/todo_home_page.dart';
 
 import 'route_names.dart';
@@ -28,13 +26,6 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       final username = settings.arguments as String?;
       return MaterialPageRoute(
         builder: (_) => TodoHomePage(username: username ?? ''),
-      );
-
-    case RouteNames.taskDetail:
-      final args = settings.arguments as Map<String, dynamic>;
-      final task = args['task'] as GetEntity;
-      return MaterialPageRoute(
-        builder: (_) => TaskEditPage(task: task),
       );
 
     default:

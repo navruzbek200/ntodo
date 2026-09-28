@@ -21,7 +21,7 @@ class UpdateBloc extends Bloc<HomeEvent, UpdateState> {
       final result = await updateUsecase(
         title: event.title,
         id: event.id,
-        completed: false,
+        completed: event.completed,
       );
       emit(UpdateSuccess(updateEntity: result));
     } catch (e) {

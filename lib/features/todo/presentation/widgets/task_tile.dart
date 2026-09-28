@@ -1,95 +1,124 @@
 import 'package:flutter/material.dart';
-import '../../../../core/constants/colors.dart';
 
+import '../../../../core/theme/app_theme.dart';
+
+/// One task as a rounded card with an animated round checkbox.
+/// In selection mode the checkbox turns into a selection marker.
 class TaskTile extends StatelessWidget {
   final String title;
   final bool checked;
+  final bool selecting;
   final bool selected;
   final VoidCallback onCheck;
-  final VoidCallback? onTap;
-  final bool isCompletedStyle;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const TaskTile({
     super.key,
     required this.title,
     required this.checked,
+    required this.selecting,
     required this.selected,
     required this.onCheck,
-    this.onTap,
-    this.isCompletedStyle = false,
+    required this.onTap,
+    required this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        color: selected ? const Color(0xFFF4F1FF) : Colors.transparent,
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: isCompletedStyle
-                    ? const Color(0xFFFFF2DD)
-                    : const Color(0xFFDCEBFA),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Image.asset(
-                  isCompletedStyle
-                      ? 'assets/icons/completed_icon.png'
-                      : 'assets/icons/todo_icon.png',
-                  width: 22,
-                  height: 22,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFFF1EDFF) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: selected ? AppPalette.brand : Colors.transparent,
+          width: 1.6,
+        ),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0F2C1D5E), blurRadius: 16, offset: Offset(0, 6)),
+        ],
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
+            child: Row(
+              children: [
+                _Check(
+                  checked: selecting ? selected : checked,
+                  isSelection: selecting,
+                  onTap: selecting ? onTap : onCheck,
                 ),
-              ),
-            ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
+                const SizedBox(width: 4),
+                Expanded(
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 200),
                     style: TextStyle(
+                      fontFamily: 'Poppins',
                       fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: isCompletedStyle
-                          ? const Color(0xFFB5B5B5)
-                          : const Color(0xFF2E2E2E),
-                      decoration:
-                      isCompletedStyle ? TextDecoration.lineThrough : null,
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
+                      color: checked ? AppPalette.muted : AppPalette.ink,
+                      decoration: checked ? TextDecoration.lineThrough : null,
+                      decorationColor: AppPalette.muted,
                     ),
+                    child: Text(title, maxLines: 3, overflow: TextOverflow.ellipsis),
                   ),
-                  const SizedBox(height: 18),
-                  const Divider(height: 1, color: Color(0xFFECECEC)),
-                ],
-              ),
-            ),
-            const SizedBox(width: 14),
-            InkWell(
-              onTap: onCheck,
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppColors.buttonColor,
-                    width: 1.6,
-                  ),
-                  color: checked ? AppColors.buttonColor : Colors.transparent,
                 ),
-                child: checked
-                    ? const Icon(Icons.check, size: 16, color: Colors.white)
-                    : null,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Check extends StatelessWidget {
+  final bool checked;
+  final bool isSelection;
+  final VoidCallback onTap;
+
+  const _Check({required this.checked, required this.isSelection, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      checked: checked,
+      button: true,
+      label: isSelection ? 'Select task' : 'Mark task as done',
+      child: InkResponse(
+        onTap: onTap,
+        radius: 24,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: checked ? AppPalette.brand : Colors.transparent,
+                border: Border.all(
+                  color: checked ? AppPalette.brand : const Color(0xFFC9BFE6),
+                  width: 2,
+                ),
+              ),
+              child: AnimatedScale(
+                duration: const Duration(milliseconds: 200),
+                scale: checked ? 1 : 0,
+                child: const Icon(Icons.check_rounded, size: 17, color: Colors.white),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

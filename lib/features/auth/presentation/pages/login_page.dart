@@ -97,7 +97,7 @@ class _LoginPageState extends State<LoginPage> {
                             "Welcome Back",
                             style: TextStyle(
                               fontSize: 14,
-                              color: primary.withOpacity(0.8),
+                              color: primary.withValues(alpha: 0.8),
                             ),
                           ),
 

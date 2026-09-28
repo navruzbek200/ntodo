@@ -30,7 +30,7 @@ class DeleteBloc extends Bloc<HomeEvent, DeleteState> {
     }
 
     if (firstError == null) {
-      emit(DeleteSuccess(count: deleted));
+      emit(DeleteSuccess(count: deleted, quiet: event.quiet));
       return;
     }
 

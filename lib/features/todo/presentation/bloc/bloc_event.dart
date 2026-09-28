@@ -17,7 +17,8 @@ class GetAllEvent extends HomeEvent {
 class UpdateEvent extends HomeEvent {
   final String title;
   final int id;
-  UpdateEvent({required this.title, required this.id});
+  final bool completed;
+  UpdateEvent({required this.title, required this.id, this.completed = false});
 }
 
 class ToggleTodoEvent extends HomeEvent {
@@ -29,5 +30,8 @@ class ToggleTodoEvent extends HomeEvent {
 
 class DeleteEvent extends HomeEvent {
   final List<String> ids;
-  DeleteEvent({required this.ids});
+
+  /// true when the UI already told the user (e.g. swipe + undo snackbar).
+  final bool quiet;
+  DeleteEvent({required this.ids, this.quiet = false});
 }
