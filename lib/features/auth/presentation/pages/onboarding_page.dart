@@ -82,16 +82,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   children: const [
                     OnboardingItem(
                       imagePath: 'assets/images/onboarding1.png',
-                      title: 'Manage your task',
+                      title: 'Manage your tasks',
                       highlight: 'Every day',
-                      subtitle: 'Organize, plan, and collaborate on tasks with Ntodo.',
+                      subtitle: 'Organize and plan your day with Ntodo.',
                     ),
                     OnboardingItem(
                       imagePath: 'assets/images/onboarding2.png',
-                      title: 'Start manage your task\nwith',
+                      title: 'Start managing your tasks\nwith',
                       highlight: 'Ntodo',
                       subtitle:
-                      'Your busy life deserves this. you can manage checklist and your goal.',
+                      'Your busy life deserves this. Keep your checklist and goals in one place.',
                     ),
                   ],
                 ),
