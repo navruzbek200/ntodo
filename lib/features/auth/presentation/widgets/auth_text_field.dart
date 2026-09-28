@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/app_theme.dart';
 
 /// Text field for auth forms; look comes from the app's input theme.
 class AuthTextField extends StatefulWidget {
@@ -41,7 +40,6 @@ class _AuthTextFieldState extends State<AuthTextField> {
         hintText: widget.hint,
         prefixIcon: Icon(
           isPassword ? Icons.lock_outline_rounded : Icons.person_outline_rounded,
-          color: AppPalette.muted,
         ),
         suffixIcon: isPassword
             ? IconButton(
@@ -49,7 +47,6 @@ class _AuthTextFieldState extends State<AuthTextField> {
                 onPressed: () => setState(() => _obscure = !_obscure),
                 icon: Icon(
                   _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                  color: AppPalette.muted,
                 ),
               )
             : null,

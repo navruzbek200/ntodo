@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/glass.dart';
 import '../../../../core/route/route_names.dart';
 import '../widgets/onboarding_item.dart';
 import '../widgets/primary_button.dart';
@@ -44,7 +46,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
       decoration: BoxDecoration(
         color: active
             ? Theme.of(context).primaryColor
-            : const Color(0xFFD9D9D9),
+            : context.tokens.checkIdle,
         borderRadius: BorderRadius.circular(99),
       ),
     );
@@ -52,10 +54,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).primaryColor;
+    final primary = context.tokens.checkOn;
 
     return Scaffold(
-      body: SafeArea(
+      backgroundColor: Colors.transparent,
+      body: AuroraBackground(
+        child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 22),
           child: Column(
@@ -116,6 +120,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

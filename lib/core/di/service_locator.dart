@@ -21,6 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/auth/data/datasource/local/auth_local_datasource.dart';
 import '../../features/auth/domain/usecase/login_usecase.dart';
 import '../route/app_navigator.dart';
+import '../theme/theme_controller.dart';
 import '../storage/local_storage.dart';
 
 import '../../features/auth/data/datasource/local/auth_local_remote_datasource.dart';
@@ -39,6 +40,8 @@ Future<void> initDI() async {
   // prefs + storage
   final prefs = await SharedPreferences.getInstance();
   final storage = LocalStorage(prefs);
+  sl.registerSingleton<SharedPreferences>(prefs);
+  sl.registerSingleton<ThemeController>(ThemeController(prefs));
 
 // ✅ Local DS
   sl.registerLazySingleton<AuthLocalRemoteDatasource>(

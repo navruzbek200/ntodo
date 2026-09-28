@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_theme.dart';
+
 class OnboardingItem extends StatelessWidget {
   final String imagePath;
   final String title;
@@ -17,27 +19,37 @@ class OnboardingItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final primary = Theme.of(context).primaryColor;
+    final t = context.tokens;
+    final primary = t.checkOn;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         // Illustration (figmada katta)
-        Image.asset(
-          imagePath,
-          width: size.width * 0.78,
-          fit: BoxFit.contain,
+        // The illustrations have dark details; a soft light disc keeps them
+        // readable on the dark theme.
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: context.isDark ? const Color(0xE6F3F0FA) : Colors.transparent,
+          ),
+          child: Image.asset(
+            imagePath,
+            width: size.width * (context.isDark ? 0.62 : 0.78),
+            fit: BoxFit.contain,
+          ),
         ),
         const SizedBox(height: 28),
 
         Text(
           title,
           textAlign: TextAlign.center,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 24,
-            fontWeight: FontWeight.w800,
-            height: 1.1,
-            color: Color(0xFF2E2E2E),
+            fontWeight: FontWeight.w700,
+            height: 1.2,
+            color: t.ink,
           ),
         ),
         const SizedBox(height: 6),
@@ -60,10 +72,10 @@ class OnboardingItem extends StatelessWidget {
           child: Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 13.5,
+            style: TextStyle(
+              fontSize: 14,
               height: 1.5,
-              color: Color(0xFF8A8A8A),
+              color: t.muted,
             ),
           ),
         ),

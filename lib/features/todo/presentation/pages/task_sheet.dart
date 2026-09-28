@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/service_locator.dart';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/glass.dart';
 import '../../domain/entities/get_entity.dart';
 import '../bloc/bloc_event.dart';
 import '../bloc/create/create_bloc.dart';
@@ -16,17 +18,47 @@ Future<bool> showTaskSheet(BuildContext context, {GetEntity? task}) async {
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => task == null
-        ? BlocProvider(
-            create: (_) => sl<CreateBloc>(),
-            child: const _CreateSheet(),
-          )
-        : BlocProvider(
-            create: (_) => sl<UpdateBloc>(),
-            child: _EditSheet(task: task),
-          ),
+    barrierColor: const Color(0x66090614),
+    builder: (_) => _GlassSheet(
+      child: task == null
+          ? BlocProvider(
+              create: (_) => sl<CreateBloc>(),
+              child: const _CreateSheet(),
+            )
+          : BlocProvider(
+              create: (_) => sl<UpdateBloc>(),
+              child: _EditSheet(task: task),
+            ),
+    ),
   );
   return saved ?? false;
+}
+
+class _GlassSheet extends StatelessWidget {
+  final Widget child;
+  const _GlassSheet({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Glass(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      color: t.surface.withValues(alpha: context.isDark ? 0.82 : 0.9),
+      blur: 24,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 14),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(color: t.checkIdle, borderRadius: BorderRadius.circular(99)),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
 }
 
 class _CreateSheet extends StatelessWidget {
