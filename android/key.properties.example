@@ -1,0 +1,6 @@
+# Copy to android/key.properties (git-ignored) and fill in.
+# The keystore itself must live OUTSIDE the repo and be backed up.
+storeFile=/Users/<you>/keystores/ntodo-upload.jks
+storePassword=
+keyAlias=upload
+keyPassword=
