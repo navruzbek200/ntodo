@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:ntodo/core/network/api_urls.dart';
 import 'package:ntodo/features/todo/data/data_source/remote_datasource.dart';
 import 'package:ntodo/features/todo/data/models/create_model.dart';
@@ -18,33 +19,25 @@ class GetRemoteDatasourceImpl implements GetRemoteDatasource {
   Future<List<TodoModel>> getAll() async {
     try {
       final response = await dioClient.get(ApiUrls.getAll);
+      final data = response.data;
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = response.data;
-
-        //  server null qaytarsa -> bo‘sh list
-        if (data == null) return <TodoModel>[];
-
-        final List rawList;
-        if (data is List) {
-          rawList = data;
-        } else if (data is Map<String, dynamic> && data['results'] is List) {
-          rawList = data['results'] as List;
-        } else {
-          //  format boshqa bo‘lsa ham crash bo‘lmasin
-          return <TodoModel>[];
-        }
-
-        return rawList
-            .whereType<Map<String, dynamic>>()
-            .map(TodoModel.fromJson)
-            .toList();
+      // Backend returns `null` (not `[]`) when the user has no todos.
+      if (data == null) return <TodoModel>[];
+      if (data is! List) {
+        throw FormatException('GET /todos: expected a list, got $data');
       }
 
-      throw Exception('Get All failed: ${response.statusCode}');
+      final todos = data
+          .whereType<Map>()
+          .map((e) => TodoModel.fromJson(e.cast<String, dynamic>()))
+          .toList();
+      LoggerService.info('Loaded ${todos.length} todos');
+      return todos;
+    } on DioException catch (e, s) {
+      LoggerService.error('Get todos failed: ${e.response?.data ?? e.message}', e, s);
+      rethrow;
     } catch (e, s) {
-      LoggerService.error('Error during Get All: $e');
-      print(s);
+      LoggerService.error('Get todos: unexpected error', e, s);
       rethrow;
     }
   }
@@ -56,41 +49,20 @@ class GetRemoteDatasourceImpl implements GetRemoteDatasource {
         ApiUrls.create,
         data: {"title": title},
       );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final raw = response.data;
-
-        final Map<String, dynamic> json = raw is String
-            ? jsonDecode(raw) as Map<String, dynamic>
-            : (raw as Map<String, dynamic>);
-
-        return CreateModel.fromJson(json);
-      }
-
-      throw Exception('Update failed: ${response.statusCode}');
+      LoggerService.info('Todo created: "$title"');
+      return CreateModel.fromJson(_asMap(response.data));
+    } on DioException catch (e, s) {
+      LoggerService.error('Create todo failed: ${e.response?.data ?? e.message}', e, s);
+      rethrow;
     } catch (e, s) {
-      LoggerService.error('Error during Update: $e');
-      print(s);
+      LoggerService.error('Create todo: unexpected error', e, s);
       rethrow;
     }
   }
 
   @override
-  Future<UpdateModel> update({required String title, required int id}) async {
-    try {
-      final response = await dioClient.put(
-        "${ApiUrls.update}?id=$id",
-        data: {
-          "title": title,
-          "completed": false, // ✅ edit doim false
-        },
-      );
-      return _parseUpdate(response);
-    } catch (e, s) {
-      LoggerService.error('Error during Update: $e');
-      print(s);
-      rethrow;
-    }
+  Future<UpdateModel> update({required String title, required int id}) {
+    return toggleCompleted(id: id, title: title, completed: false);
   }
 
   @override
@@ -101,48 +73,39 @@ class GetRemoteDatasourceImpl implements GetRemoteDatasource {
   }) async {
     try {
       final response = await dioClient.put(
-        "${ApiUrls.update}?id=$id",
-        data: {
-          "title": title,
-          "completed": completed, // ✅ checkbox qiymati
-        },
+        ApiUrls.update,
+        queryParams: {'id': id},
+        data: {"title": title, "completed": completed},
       );
-      return _parseUpdate(response);
+      LoggerService.info('Todo #$id updated: "$title", completed=$completed');
+      return UpdateModel.fromJson(_asMap(response.data));
+    } on DioException catch (e, s) {
+      LoggerService.error('Update todo #$id failed: ${e.response?.data ?? e.message}', e, s);
+      rethrow;
     } catch (e, s) {
-      LoggerService.error('Error during Toggle: $e');
-      print(s);
+      LoggerService.error('Update todo #$id: unexpected error', e, s);
       rethrow;
     }
-  }
-
-  UpdateModel _parseUpdate(dynamic response) {
-    // response: sening dioClient Response qaytaradi (statusCode, data)
-    final status = response.statusCode as int?;
-    if (status == 200 || status == 201) {
-      final raw = response.data;
-      final Map<String, dynamic> json = raw is String
-          ? jsonDecode(raw) as Map<String, dynamic>
-          : (raw as Map<String, dynamic>);
-      return UpdateModel.fromJson(json);
-    }
-    throw Exception('Request failed: $status');
   }
 
   @override
   Future<void> delete({required String id}) async {
     try {
-      final response = await dioClient.delete(
-        "${ApiUrls.delete}?id=$id",
-      );
-
-      final status = response.statusCode ?? 0;
-      if (status == 204 || status == 200) return;
-
-      throw Exception('Delete failed: $status');
+      // Backend answers 204 No Content on success.
+      await dioClient.delete(ApiUrls.delete, queryParams: {'id': id});
+      LoggerService.info('Todo #$id deleted');
+    } on DioException catch (e, s) {
+      LoggerService.error('Delete todo #$id failed: ${e.response?.data ?? e.message}', e, s);
+      rethrow;
     } catch (e, s) {
-      LoggerService.error('Error during Delete: $e');
-      print(s);
+      LoggerService.error('Delete todo #$id: unexpected error', e, s);
       rethrow;
     }
+  }
+
+  Map<String, dynamic> _asMap(dynamic raw) {
+    final decoded = raw is String ? jsonDecode(raw) : raw;
+    if (decoded is Map) return decoded.cast<String, dynamic>();
+    throw FormatException('Expected a JSON object, got $raw');
   }
 }

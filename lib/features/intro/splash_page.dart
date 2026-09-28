@@ -28,6 +28,7 @@ class _SplashPageState extends State<SplashPage> {
     Navigator.pushReplacementNamed(
       context,
       logged ? RouteNames.home : RouteNames.onboarding,
+      arguments: logged ? auth.getUsername() : null,
     );
   }
 

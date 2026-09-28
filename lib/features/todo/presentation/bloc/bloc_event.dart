@@ -3,7 +3,10 @@ abstract class HomeEvent {
 }
 
 class GetAllEvent extends HomeEvent {
-  GetAllEvent();
+  /// true on first open: the bloc is app-wide, so without this a previous
+  /// user's list could flash on screen after re-login.
+  final bool clearCurrent;
+  GetAllEvent({this.clearCurrent = false});
 }
 
   class CreateEvent extends HomeEvent {
@@ -25,6 +28,6 @@ class ToggleTodoEvent extends HomeEvent {
 }
 
 class DeleteEvent extends HomeEvent {
-  final String id;
-  DeleteEvent({required this.id});
+  final List<String> ids;
+  DeleteEvent({required this.ids});
 }

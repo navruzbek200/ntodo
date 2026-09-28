@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 class AuthTextField extends StatefulWidget {
   final TextEditingController controller;
@@ -43,8 +42,10 @@ class _AuthTextFieldState extends State<AuthTextField> {
             TextField(
               controller: widget.controller,
               obscureText: isPassword ? _obscure : false,
-              maxLength: isPassword ? 8 : null,
-              inputFormatters: isPassword ? [LengthLimitingTextInputFormatter(8)] : null,
+              // No length cap: sign-up allows any length, so capping here
+              // would lock out users with longer passwords.
+              autocorrect: !isPassword,
+              enableSuggestions: !isPassword,
               onChanged: (v) => state.didChange(v),
               decoration: InputDecoration(
                 counterText: "",

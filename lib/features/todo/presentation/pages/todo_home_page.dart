@@ -46,7 +46,7 @@ class _TodoHomePageState extends State<TodoHomePage> {
     _username = widget.username.trim();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<GetAllBloc>().add(GetAllEvent());
+      context.read<GetAllBloc>().add(GetAllEvent(clearCurrent: true));
     });
   }
 
@@ -110,9 +110,9 @@ class _TodoHomePageState extends State<TodoHomePage> {
       _selectMode = false;
     });
 
-    for (final id in ids) {
-      context.read<DeleteBloc>().add(DeleteEvent(id: id.toString()));
-    }
+    context.read<DeleteBloc>().add(
+      DeleteEvent(ids: ids.map((id) => id.toString()).toList()),
+    );
   }
 
   Future<void> _addTaskLocal() async {
@@ -233,13 +233,18 @@ class _TodoHomePageState extends State<TodoHomePage> {
             if (state is DeleteSuccess) {
               context.read<GetAllBloc>().add(GetAllEvent());
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Deleted successfully")),
+                SnackBar(content: Text("${state.count} ta task o‘chirildi")),
               );
             }
 
             if (state is DeleteError) {
+              // Some may have been deleted before the failure.
+              context.read<GetAllBloc>().add(GetAllEvent());
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(state.message)),
+                SnackBar(
+                  backgroundColor: Colors.red,
+                  content: Text(state.message),
+                ),
               );
             }
           },
@@ -261,6 +266,19 @@ class _TodoHomePageState extends State<TodoHomePage> {
                 SnackBar(content: Text(state.message)),
               );
             }
+          },
+        ),
+
+        // Toggle failed on the server → list was rolled back, tell the user.
+        BlocListener<GetAllBloc, GetAllState>(
+          listenWhen: (_, curr) => curr is GetAllSuccess && curr.errorMessage != null,
+          listener: (context, state) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: Colors.red,
+                content: Text((state as GetAllSuccess).errorMessage!),
+              ),
+            );
           },
         ),
       ],
@@ -310,17 +328,6 @@ class _TodoHomePageState extends State<TodoHomePage> {
                     }
 
                     if (state is GetAllError) {
-                      if (state.message == "SESSION_EXPIRED") {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          Navigator.pushNamedAndRemoveUntil(
-                            context,
-                            RouteNames.login,
-                                (_) => false,
-                          );
-                        });
-                        return const SizedBox.shrink();
-                      }
-
                       return RefreshIndicator(
                         onRefresh: _reload,
                         child: ListView(

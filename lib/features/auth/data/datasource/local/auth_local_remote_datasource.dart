@@ -1,15 +1,6 @@
 abstract class AuthLocalRemoteDatasource {
-
-  // Remember me (Hive)
-  Future<void> saveRememberMe(String username, String password);
-
-  // Credentials (LocalStorage)
-  Future<void> saveCredentials({
-    required String username,
-    required String password,
-  });
-
   Future<void> saveUsername(String username);
+  String? getUsername();
 
   // Token
   Future<void> saveAccessToken(String token);
@@ -18,10 +9,6 @@ abstract class AuthLocalRemoteDatasource {
   // Login status check
   bool isLoggedIn();
 
-  // Logout
+  // Logout: clears everything stored for the session
   Future<void> logout();
-
-  // Getters
-  String? getUsername();
-  String? getPassword();
 }

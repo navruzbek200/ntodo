@@ -8,8 +8,6 @@ import 'package:ntodo/features/auth/presentation/bloc/auth_event.dart';
 
 import 'package:ntodo/features/auth/presentation/bloc/login/login_bloc.dart';
 import 'package:ntodo/features/auth/presentation/bloc/login/login_state.dart';
-
-import '../../data/datasource/local/auth_local_remote_datasource.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/primary_button.dart';
 
@@ -60,13 +58,8 @@ class _LoginPageState extends State<LoginPage> {
                 child: Form(
                   key: _formKey,
                   child: BlocConsumer<LoginBloc, LoginState>(
-                    listener: (context, state) async {
+                    listener: (context, state) {
                       if (state is LoginSuccess) {
-                        await sl<AuthLocalRemoteDatasource>().saveCredentials(
-                          username: _usernameCtrl.text.trim(),
-                          password: _passwordCtrl.text,
-                        );
-
                         Navigator.pushNamedAndRemoveUntil(
                           context,
                           RouteNames.home,

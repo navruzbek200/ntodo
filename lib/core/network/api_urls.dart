@@ -1,5 +1,9 @@
 abstract class ApiUrls {
-  static const baseUrl = 'https://todo-api-go-production-0484.up.railway.app';
+  // Override per build: flutter run --dart-define=API_BASE_URL=https://api.example.com
+  static const baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://13.61.184.79:8080',
+  );
   static const register = '/register';
   static const login = '/login';
   static const getAll = '/todos';
@@ -8,7 +12,6 @@ abstract class ApiUrls {
   static const delete = '/todos/delete';
   static const logout = '/logout';
 
-
-
-
+  /// Endpoints that must never carry a token or trigger a forced sign-out.
+  static const authFree = {register, login};
 }

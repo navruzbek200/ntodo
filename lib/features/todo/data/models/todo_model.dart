@@ -10,10 +10,10 @@ class TodoModel extends GetEntity {
 
   factory TodoModel.fromJson(Map<String, dynamic> json) {
     return TodoModel(
-      id: json['id'] ?? 0,
-      userId: json['user_id'] ?? 0,
-      title: json['title'] ?? '',
-      completed: json['completed'] ?? false,
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      userId: (json['user_id'] as num?)?.toInt() ?? 0,
+      title: json['title']?.toString() ?? '',
+      completed: json['completed'] == true,
     );
   }
 

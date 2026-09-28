@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- HTTPS everywhere by default. -->
+    <base-config cleartextTrafficPermitted="false" />
+
+    <!-- TODO: backend HTTPS ga o'tgach bu blokni o'chiring. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">13.61.184.79</domain>
+    </domain-config>
+</network-security-config>

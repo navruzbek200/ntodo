@@ -1,5 +1,4 @@
 import 'package:get_it/get_it.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:ntodo/core/network/dio_clinet.dart';
 import 'package:ntodo/features/auth/domain/usecase/logout_usecase.dart';
 import 'package:ntodo/features/auth/domain/usecase/register_usecase.dart';
@@ -20,7 +19,8 @@ import 'package:ntodo/features/todo/presentation/bloc/update/update_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/auth/data/datasource/local/auth_local_datasource.dart';
-import '../../features/auth/domain/usecase/Login_usecase.dart';
+import '../../features/auth/domain/usecase/login_usecase.dart';
+import '../route/app_navigator.dart';
 import '../storage/local_storage.dart';
 
 import '../../features/auth/data/datasource/local/auth_local_remote_datasource.dart';
@@ -40,18 +40,17 @@ Future<void> initDI() async {
   final prefs = await SharedPreferences.getInstance();
   final storage = LocalStorage(prefs);
 
-// hive
-  await Hive.initFlutter();
-  final authBox = await Hive.openBox('authBox');
-
 // ✅ Local DS
   sl.registerLazySingleton<AuthLocalRemoteDatasource>(
-        () => AuthLocalDataSourceImpl(storage, authBox),
+        () => AuthLocalDataSourceImpl(storage),
   );
 
 // ✅ DioClinet
   sl.registerLazySingleton<DioClinet>(
-        () => DioClinet(local: sl<AuthLocalRemoteDatasource>()),
+        () => DioClinet(
+          local: sl<AuthLocalRemoteDatasource>(),
+          onUnauthorized: goToLoginClearingStack,
+        ),
   );
 
 

@@ -7,7 +7,6 @@ import 'package:ntodo/core/route/route_names.dart';
 import 'package:ntodo/features/auth/presentation/bloc/register/register_bloc.dart';
 import 'package:ntodo/features/auth/presentation/bloc/register/register_state.dart';
 
-import '../../data/datasource/local/auth_local_remote_datasource.dart';
 import '../bloc/auth_event.dart'; // RegisterEvent shu faylda bo'lsa
 
 // sening buttoning
@@ -120,13 +119,13 @@ class _SignUpPageState extends State<SignUpPage> {
                     Form(
                       key: _formKey,
                       child: BlocConsumer<RegisterBloc, RegisterState>(
-                        listener: (context, state) async{
+                        listener: (context, state) {
                           if (state is RegisterSuccess) {
-                            await sl<AuthLocalRemoteDatasource>().saveCredentials(
-                              username: _usernameCtrl.text.trim(),
-                              password: _passwordCtrl.text,
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Ro‘yxatdan o‘tdingiz. Endi kiring."),
+                            ),
                           );
-
                           Navigator.pushNamedAndRemoveUntil(
                           context,
                           RouteNames.login,

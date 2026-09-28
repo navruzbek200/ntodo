@@ -28,103 +28,66 @@ class UserRemoteDatasourceImpl implements UserRemoteDatasource {
         data: {"password": password, "username": username},
       );
 
-      final status = response.statusCode ?? 0;
+      final data = response.data;
+      LoggerService.info('Register successful: $username');
 
-      if (status == 200 || status == 201) {
-        LoggerService.info('customer register successful: ${response.data}');
-
-        final data = response.data;
-
-        if (data is Map<String, dynamic>) {
-          return RegisterModel.fromJson(data);
-        }
-
-        if (data is Map) {
-          return RegisterModel.fromJson(data.cast<String, dynamic>());
-        }
-
-        return RegisterModel(message: data?.toString());
+      if (data is Map) {
+        return RegisterModel.fromJson(data.cast<String, dynamic>());
       }
-
-      LoggerService.warning("customer register failed: $status");
-      throw Exception('customer register failed: $status');
-    } on DioError catch (e, s) {
-      LoggerService.error('Dio error during customer register: ${e.message}');
-      LoggerService.error('Response: ${e.response?.data}');
-      LoggerService.error('Stack: $s');
+      return RegisterModel(message: data?.toString());
+    } on DioException catch (e, s) {
+      LoggerService.error('Register failed: ${e.response?.data ?? e.message}', e, s);
       rethrow;
     } catch (e, s) {
-      LoggerService.error('Error during customer register: $e');
-      LoggerService.error('Stack: $s');
+      LoggerService.error('Register: unexpected error', e, s);
       rethrow;
     }
   }
 
   @override
-  Future<LoginModel> login(
-      {required String password, required String username}) async {
+  Future<LoginModel> login({
+    required String password,
+    required String username,
+  }) async {
     try {
       final response = await dioClient.post(
         ApiUrls.login,
         data: {"password": password, "username": username},
       );
 
-      final status = response.statusCode ?? 0;
-
-      if (status == 200 || status == 201) {
-        LoggerService.info('customer register successful: ${response.data}');
-
-        final data = response.data;
-
-        if (data is Map<String, dynamic>) {
-          return LoginModel.fromJson(data);
-        }
-
-        if (data is Map) {
-          return LoginModel.fromJson(data.cast<String, dynamic>());
-        }
-
-        return LoginModel(token: data!.toString());
+      final data = response.data;
+      if (data is! Map || data['token'] is! String) {
+        throw FormatException('Login response has no token: $data');
       }
 
-      LoggerService.warning("customer register failed: $status");
-      throw Exception('customer register failed: $status');
-    } on DioError catch (e, s) {
-      LoggerService.error('Dio error during customer register: ${e.message}');
-      LoggerService.error('Response: ${e.response?.data}');
-      LoggerService.error('Stack: $s');
+      final model = LoginModel.fromJson(data.cast<String, dynamic>());
+      await local.saveAccessToken(model.token);
+      await local.saveUsername(username);
+      LoggerService.info('Login successful: $username');
+      return model;
+    } on DioException catch (e, s) {
+      LoggerService.error('Login failed: ${e.response?.data ?? e.message}', e, s);
       rethrow;
     } catch (e, s) {
-      LoggerService.error('Error during customer register: $e');
-      LoggerService.error('Stack: $s');
+      LoggerService.error('Login: unexpected error', e, s);
       rethrow;
     }
   }
 
+  /// Signing out must always succeed locally, even if the server call fails
+  /// (expired token, no network) — otherwise the user is stuck logged in.
   @override
   Future<void> logout() async {
     try {
-      final response = await dioClient.post(ApiUrls.logout);
-
-      final status = response.statusCode ?? 0;
-
-      if (status == 200 || status == 201) {
-        LoggerService.info('logout successful: ${response.data}');
-        await local.logout(); 
-        return;
-      }
-
-      LoggerService.warning("logout failed: $status");
-      throw Exception('logout failed: $status');
-    } on DioError catch (e, s) {
-      LoggerService.error('Dio error during logout: ${e.message}');
-      LoggerService.error('Response: ${e.response?.data}');
-      LoggerService.error('Stack: $s');
-      rethrow;
+      await dioClient.post(ApiUrls.logout);
+      LoggerService.info('Logout successful');
+    } on DioException catch (e, s) {
+      LoggerService.warning('Server logout failed, clearing local session anyway');
+      LoggerService.error('Logout: ${e.response?.data ?? e.message}', e, s);
     } catch (e, s) {
-      LoggerService.error('Error during logout: $e');
-      LoggerService.error('Stack: $s');
-      rethrow;
+      LoggerService.error('Logout: unexpected error', e, s);
+    } finally {
+      await local.logout();
     }
   }
 }

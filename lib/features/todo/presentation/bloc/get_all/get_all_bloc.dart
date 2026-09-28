@@ -1,13 +1,13 @@
 import 'package:bloc/bloc.dart';
-import 'package:dio/dio.dart';
 import 'package:ntodo/features/todo/domain/usecase/get_usecase.dart';
 import 'package:ntodo/features/todo/domain/usecase/update_usecase.dart';
 import 'package:ntodo/features/todo/presentation/bloc/bloc_event.dart';
 import 'package:ntodo/features/todo/presentation/bloc/get_all/get_all_state.dart';
-import '../../../domain/entities/get_entity.dart';
-import 'package:ntodo/features/auth/data/datasource/local/auth_local_remote_datasource.dart';
-import '../../../../../core/di/service_locator.dart';
+import '../../../../../core/network/api_error.dart';
+import '../../../../../core/untils/logger.dart';
 
+// A 401 is handled globally in DioClinet (session cleared, back to login),
+// so this bloc only needs to surface the message.
 class GetAllBloc extends Bloc<HomeEvent, GetAllState> {
   final GetUsecase getUsecase;
   final UpdateUsecase updateUsecase;
@@ -18,39 +18,24 @@ class GetAllBloc extends Bloc<HomeEvent, GetAllState> {
   }
 
   Future<void> _onGetAll(GetAllEvent event, Emitter<GetAllState> emit) async {
-    emit(GetAllLoading());
+    // Keep the current list on screen during pull-to-refresh / reloads.
+    if (event.clearCurrent || state is! GetAllSuccess) emit(GetAllLoading());
     try {
       final result = await getUsecase();
       emit(GetAllSuccess(getEntity: result));
-    } on DioException catch (e) {
-      // ✅ 401 bo‘lsa session expired
-      if (e.response?.statusCode == 401) {
-        await sl<AuthLocalRemoteDatasource>().logout();
-        emit(GetAllError(message: "SESSION_EXPIRED"));
-        return;
-      }
-      emit(GetAllError(message: _mapDioErrorToMessage(e)));
-    } catch (_) {
-      emit(GetAllError(message: "Noma’lum xato yuz berdi"));
+    } catch (e) {
+      emit(GetAllError(message: apiErrorMessage(e)));
     }
   }
 
+  /// Optimistic toggle: flip locally first, roll back if the server refuses.
   Future<void> _onToggle(ToggleTodoEvent event, Emitter<GetAllState> emit) async {
     final current = state;
     if (current is! GetAllSuccess) return;
 
-    final updatedList = current.getEntity.map((t) {
-      if (t.id == event.id) {
-        return GetEntity(
-          id: t.id,
-          title: t.title,
-          completed: event.value,
-          userId: t.userId,
-        );
-      }
-      return t;
-    }).toList();
-
+    final updatedList = current.getEntity
+        .map((t) => t.id == event.id ? t.copyWith(completed: event.value) : t)
+        .toList();
     emit(GetAllSuccess(getEntity: updatedList));
 
     try {
@@ -59,32 +44,12 @@ class GetAllBloc extends Bloc<HomeEvent, GetAllState> {
         title: event.title,
         completed: event.value,
       );
-    } on DioException catch (e) {
-      // ✅ 401 bo‘lsa session expired
-      if (e.response?.statusCode == 401) {
-        await sl<AuthLocalRemoteDatasource>().logout();
-        emit(GetAllError(message: "SESSION_EXPIRED"));
-        return;
-      }
-      // ❗ boshqa xato -> rollback
-      emit(GetAllSuccess(getEntity: current.getEntity));
-    } catch (_) {
-      emit(GetAllSuccess(getEntity: current.getEntity));
+    } catch (e) {
+      LoggerService.warning('Toggle #${event.id} failed, rolling back');
+      emit(GetAllSuccess(
+        getEntity: current.getEntity,
+        errorMessage: apiErrorMessage(e),
+      ));
     }
-  }
-
-  String _mapDioErrorToMessage(DioException error) {
-    if (error.type == DioExceptionType.unknown) return "Internet ulanmagan.";
-    if (error.type == DioExceptionType.connectionTimeout ||
-        error.type == DioExceptionType.receiveTimeout) {
-      return "So‘rov vaqtida javob kelmadi.";
-    }
-
-    final code = error.response?.statusCode;
-    if (code == 400) return "Ma’lumot noto‘g‘ri.";
-    if (code == 401) return "Authorization xato.";
-    if (code == 500) return "Server xatosi.";
-
-    return "Noma’lum xato.";
   }
 }
