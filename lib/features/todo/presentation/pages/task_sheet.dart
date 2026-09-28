@@ -12,9 +12,10 @@ import '../bloc/update/update_bloc.dart';
 import '../bloc/update/update_state.dart';
 
 /// Bottom sheet for creating a task, or editing [task] when given.
-/// Resolves to true when the server accepted the change.
-Future<bool> showTaskSheet(BuildContext context, {GetEntity? task}) async {
-  final saved = await showModalBottomSheet<bool>(
+/// [suggestion] pre-fills a new task (used by the first-run tutorial).
+/// Resolves to the saved title, or null when nothing was saved.
+Future<String?> showTaskSheet(BuildContext context, {GetEntity? task, String? suggestion}) {
+  return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -23,7 +24,7 @@ Future<bool> showTaskSheet(BuildContext context, {GetEntity? task}) async {
       child: task == null
           ? BlocProvider(
               create: (_) => sl<CreateBloc>(),
-              child: const _CreateSheet(),
+              child: _CreateSheet(suggestion: suggestion),
             )
           : BlocProvider(
               create: (_) => sl<UpdateBloc>(),
@@ -31,7 +32,6 @@ Future<bool> showTaskSheet(BuildContext context, {GetEntity? task}) async {
             ),
     ),
   );
-  return saved ?? false;
 }
 
 class _GlassSheet extends StatelessWidget {
@@ -62,17 +62,22 @@ class _GlassSheet extends StatelessWidget {
 }
 
 class _CreateSheet extends StatelessWidget {
-  const _CreateSheet();
+  final String? suggestion;
+  const _CreateSheet({this.suggestion});
 
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<CreateBloc, CreateState>(
       listener: (context, state) {
-        if (state is CreateSuccess) Navigator.pop(context, true);
+        if (state is CreateSuccess) Navigator.pop(context, state.createEntity.title);
       },
       builder: (context, state) => _TaskForm(
         heading: 'New task',
         actionLabel: 'Add task',
+        initialTitle: suggestion,
+        tip: suggestion == null
+            ? null
+            : 'We picked an example for you – tap “Add task”, or type your own.',
         loading: state is CreateLoading,
         error: state is CreateError ? state.message : null,
         onSubmit: (title) => context.read<CreateBloc>().add(CreateEvent(title: title)),
@@ -89,11 +94,12 @@ class _EditSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocConsumer<UpdateBloc, UpdateState>(
       listener: (context, state) {
-        if (state is UpdateSuccess) Navigator.pop(context, true);
+        if (state is UpdateSuccess) Navigator.pop(context, state.updateEntity.title);
       },
       builder: (context, state) => _TaskForm(
         heading: 'Edit task',
         actionLabel: 'Save changes',
+        isEdit: true,
         initialTitle: task.title,
         loading: state is UpdateLoading,
         error: state is UpdateError ? state.message : null,
@@ -109,6 +115,8 @@ class _TaskForm extends StatefulWidget {
   final String heading;
   final String actionLabel;
   final String? initialTitle;
+  final String? tip;
+  final bool isEdit;
   final bool loading;
   final String? error;
   final ValueChanged<String> onSubmit;
@@ -120,6 +128,8 @@ class _TaskForm extends StatefulWidget {
     required this.error,
     required this.onSubmit,
     this.initialTitle,
+    this.tip,
+    this.isEdit = false,
   });
 
   @override
@@ -142,8 +152,8 @@ class _TaskFormState extends State<_TaskForm> {
       setState(() => _showEmptyError = true);
       return;
     }
-    if (title == widget.initialTitle) {
-      Navigator.pop(context, false);
+    if (widget.isEdit && title == widget.initialTitle) {
+      Navigator.pop(context);
       return;
     }
     widget.onSubmit(title);
@@ -165,6 +175,28 @@ class _TaskFormState extends State<_TaskForm> {
             widget.heading,
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
           ),
+          if (widget.tip != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppPalette.accent.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  const Text('💡', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.tip!,
+                      style: TextStyle(fontSize: 13, color: context.tokens.ink, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _ctrl,

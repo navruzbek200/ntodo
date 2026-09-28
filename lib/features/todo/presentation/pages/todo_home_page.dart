@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -46,20 +48,41 @@ class _TodoHomePageState extends State<TodoHomePage> {
   /// after the server delete). Hidden locally so Dismissible can remove them.
   final Set<int> _hiddenIds = {};
 
-  // Tour targets.
+  // ---- first-run tutorial state ----
+  static const _samples = [
+    '💪 Do 20 push-ups',
+    '📚 Read 10 pages of a book',
+    '📝 Finish my homework',
+    '💧 Drink a glass of water',
+    '🚶 Take a 15-minute walk',
+    '🧘 Stretch for 5 minutes',
+  ];
+  final _tour = TourController();
   final _fabKey = GlobalKey();
-  final _firstCheckKey = GlobalKey();
-  final _firstTileKey = GlobalKey();
+  final _tutorialTileKey = GlobalKey();
+  final _tutorialCheckKey = GlobalKey();
   final _progressKey = GlobalKey();
   final _themeKey = GlobalKey();
-  bool _tourRunning = false;
+  bool _tourScheduled = false;
+  String _suggestion = _samples.first;
+
+  /// Title the user saved during the tutorial; we look it up after reload.
+  String? _tutorialTitle;
+  int? _tutorialTaskId;
 
   @override
   void initState() {
     super.initState();
+    _tour.onFinish = _onTourFinished;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<GetAllBloc>().add(GetAllEvent(clearCurrent: true));
     });
+  }
+
+  @override
+  void dispose() {
+    _tour.dispose();
+    super.dispose();
   }
 
   Future<void> _reload() async => context.read<GetAllBloc>().add(GetAllEvent());
@@ -67,72 +90,100 @@ class _TodoHomePageState extends State<TodoHomePage> {
   // ---- onboarding tour -----------------------------------------------------
 
   void _maybeStartTour() {
-    if (_tourRunning || (sl<SharedPreferences>().getBool(_tourDoneKey) ?? false)) return;
+    if (_tour.active || _tourScheduled) return;
+    if (sl<SharedPreferences>().getBool(_tourDoneKey) ?? false) return;
+    _tourScheduled = true;
     // Let the list's entrance animation settle so spotlights land correctly.
     Future.delayed(const Duration(milliseconds: 700), () {
       if (mounted) _startTour();
     });
   }
 
-  Future<void> _startTour() async {
-    if (_tourRunning || _selectMode) return;
-    _tourRunning = true;
-    await showSpotlightTour(context, [
+  void _onTourFinished() {
+    sl<SharedPreferences>().setBool(_tourDoneKey, true);
+    _tourScheduled = false;
+    if (mounted) {
+      setState(() {
+        _tutorialTitle = null;
+        _tutorialTaskId = null;
+      });
+    }
+  }
+
+  /// Advance from an interactive step after the UI has settled.
+  void _advanceFrom(String stepId, Duration delay) {
+    _tour.suspend();
+    Future.delayed(delay, () {
+      if (mounted && _tour.isAt(stepId)) _tour.next();
+    });
+  }
+
+  /// Hands-on tutorial: the user creates a sample task, completes it and
+  /// swipes it away, then gets two quick tips. Any step can be skipped.
+  void _startTour() {
+    if (_tour.active || _selectMode) return;
+    _suggestion = _samples[math.Random().nextInt(_samples.length)];
+    _tutorialTitle = null;
+    _tutorialTaskId = null;
+    _tour.start([
       TourStep(
+        id: 'create',
         target: _fabKey,
         icon: Icons.add_task_rounded,
-        title: 'Add your first task',
-        body: 'Tap “New task”, type what you need to do and save. It syncs to your account.',
+        title: "Let's add a task",
+        body:
+            'Tap “New task” – we’ll suggest one so you can try it right away.',
         gesture: TourGesture.tap,
-        radius: 20,
+        interactive: true,
       ),
       TourStep(
-        target: _firstCheckKey,
+        id: 'complete',
+        target: _tutorialCheckKey,
         icon: Icons.check_circle_outline_rounded,
-        title: 'Tick it off',
-        body: 'Tap the circle when a task is done. It moves to “Completed” and your progress grows.',
+        title: 'Now tick it off',
+        body: 'Done with it? Tap the circle to mark the task as completed.',
         gesture: TourGesture.tap,
+        interactive: true,
         radius: 30,
         inflate: const EdgeInsets.all(4),
       ),
       TourStep(
-        target: _firstTileKey,
+        id: 'swipe',
+        target: _tutorialTileKey,
         icon: Icons.swipe_left_rounded,
         title: 'Swipe to delete',
-        body: 'Swipe a task to the left to delete it – you get a few seconds to undo. '
-            'Tap a task to edit it.',
+        body:
+            'Swipe the task to the left to remove it. You can undo for a few seconds.',
         gesture: TourGesture.swipeLeft,
+        interactive: true,
       ),
       TourStep(
-        target: _firstTileKey,
-        icon: Icons.touch_app_rounded,
-        title: 'Select several',
-        body: 'Press and hold a task to select more than one, then delete them together.',
-        gesture: TourGesture.longPress,
-      ),
-      TourStep(
+        id: 'progress',
         target: _progressKey,
         icon: Icons.insights_rounded,
-        title: 'Watch your progress',
-        body: 'See how much of today’s list you’ve finished. Hit 100% for a little celebration!',
+        title: 'Your daily progress',
+        body:
+            'Completed tasks fill this bar – reach 100% for a little celebration 🎉',
         radius: 22,
       ),
       TourStep(
+        id: 'theme',
         target: _themeKey,
         icon: Icons.dark_mode_rounded,
-        title: 'Light or dark',
-        body: 'Switch themes anytime. Replay these tips from the ⋮ menu.',
+        title: 'Make it yours',
+        body:
+            'Switch between light and dark here. Tip: press and hold a task to select '
+            'several. Replay this tour from the ⋮ menu.',
         radius: 26,
         inflate: const EdgeInsets.all(2),
       ),
     ]);
-    await sl<SharedPreferences>().setBool(_tourDoneKey, true);
-    _tourRunning = false;
   }
 
   // ---- selection -----------------------------------------------------------
 
   void _startSelect(GetEntity task) {
+    if (_tour.active) return;
     HapticFeedback.selectionClick();
     setState(() {
       _selectMode = true;
@@ -174,6 +225,9 @@ class _TodoHomePageState extends State<TodoHomePage> {
 
   void _onSwipeDelete(GetEntity task) {
     setState(() => _hiddenIds.add(task.id));
+    if (_tour.isAt('swipe') && task.id == _tutorialTaskId) {
+      _advanceFrom('swipe', const Duration(milliseconds: 450));
+    }
 
     final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
     messenger
@@ -189,16 +243,19 @@ class _TodoHomePageState extends State<TodoHomePage> {
         )
         .closed
         .then((reason) {
-      if (!mounted) return;
-      if (reason == SnackBarClosedReason.action) {
-        setState(() => _hiddenIds.remove(task.id));
-      } else {
-        context.read<DeleteBloc>().add(DeleteEvent(ids: ['${task.id}'], quiet: true));
-      }
-    });
+          if (!mounted) return;
+          if (reason == SnackBarClosedReason.action) {
+            setState(() => _hiddenIds.remove(task.id));
+          } else {
+            context.read<DeleteBloc>().add(
+              DeleteEvent(ids: ['${task.id}'], quiet: true),
+            );
+          }
+        });
   }
 
   void _onTapTask(GetEntity task) {
+    if (_tour.active) return;
     if (_selectMode) {
       _toggleSelect(task);
     } else {
@@ -209,13 +266,46 @@ class _TodoHomePageState extends State<TodoHomePage> {
   void _onCheck(GetEntity task) {
     HapticFeedback.lightImpact();
     context.read<GetAllBloc>().add(
-          ToggleTodoEvent(id: task.id, value: !task.completed, title: task.title),
-        );
+      ToggleTodoEvent(id: task.id, value: !task.completed, title: task.title),
+    );
+    if (_tour.isAt('complete') &&
+        task.id == _tutorialTaskId &&
+        !task.completed) {
+      // Wait for the card to move into "Completed" before pointing at it.
+      _advanceFrom('complete', const Duration(milliseconds: 800));
+    }
   }
 
   Future<void> _openSheet({GetEntity? task}) async {
-    final saved = await showTaskSheet(context, task: task);
-    if (saved && mounted) _reload();
+    final tutorial = task == null && _tour.isAt('create');
+    if (tutorial) _tour.suspend();
+    final saved = await showTaskSheet(
+      context,
+      task: task,
+      suggestion: tutorial ? _suggestion : null,
+    );
+    if (!mounted) return;
+    if (saved != null) {
+      if (tutorial) _tutorialTitle = saved; // picked up after the reload
+      _reload();
+    } else if (tutorial) {
+      _tour.suspend(false); // closed without saving – show the step again
+    }
+  }
+
+  /// After the tutorial task is created, find it in the fresh list.
+  void _findTutorialTask(List<GetEntity> tasks) {
+    final title = _tutorialTitle;
+    if (title == null || !_tour.isAt('create')) return;
+    final matches =
+        tasks.where((t) => t.title == title && !t.completed).toList()
+          ..sort((a, b) => b.id.compareTo(a.id));
+    if (matches.isEmpty) return;
+    setState(() {
+      _tutorialTitle = null;
+      _tutorialTaskId = matches.first.id;
+    });
+    _advanceFrom('create', const Duration(milliseconds: 650));
   }
 
   // ---- menu ----------------------------------------------------------------
@@ -225,11 +315,14 @@ class _TodoHomePageState extends State<TodoHomePage> {
       case HeaderMenu.tips:
         _startTour();
       case HeaderMenu.privacy:
-        if (!await AppLinks.open(AppLinks.privacyPolicy)) _showError('Could not open the page');
+        if (!await AppLinks.open(AppLinks.privacyPolicy)) {
+          _showError('Could not open the page');
+        }
       case HeaderMenu.deleteAccount:
         final ok = await _confirm(
           title: 'Delete your account?',
-          message: 'We will permanently delete your account and all your tasks within 30 days. '
+          message:
+              'We will permanently delete your account and all your tasks within 30 days. '
               'Your email app will open with a ready-to-send request.',
           action: 'Continue',
           destructive: true,
@@ -257,10 +350,15 @@ class _TodoHomePageState extends State<TodoHomePage> {
         title: Text(title),
         content: Text(message),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: destructive ? TextButton.styleFrom(foregroundColor: AppPalette.danger) : null,
+            style: destructive
+                ? TextButton.styleFrom(foregroundColor: AppPalette.danger)
+                : null,
             child: Text(action),
           ),
         ],
@@ -291,7 +389,9 @@ class _TodoHomePageState extends State<TodoHomePage> {
                 if (!state.quiet) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('${state.count} ${state.count == 1 ? 'task' : 'tasks'} deleted'),
+                      content: Text(
+                        '${state.count} ${state.count == 1 ? 'task' : 'tasks'} deleted',
+                      ),
                     ),
                   );
                 }
@@ -307,7 +407,11 @@ class _TodoHomePageState extends State<TodoHomePage> {
           BlocListener<LogoutBloc, LogoutState>(
             listener: (context, state) {
               if (state is LogoutSuccess) {
-                Navigator.pushNamedAndRemoveUntil(context, RouteNames.login, (_) => false);
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  RouteNames.login,
+                  (_) => false,
+                );
               }
               if (state is LogoutError) _showError(state.message);
             },
@@ -318,68 +422,85 @@ class _TodoHomePageState extends State<TodoHomePage> {
               // Forget hidden ids the server no longer returns.
               final alive = state.getEntity.map((t) => t.id).toSet();
               if (_hiddenIds.any((id) => !alive.contains(id))) {
-                setState(() => _hiddenIds.removeWhere((id) => !alive.contains(id)));
+                setState(
+                  () => _hiddenIds.removeWhere((id) => !alive.contains(id)),
+                );
               }
               // Toggle failed on the server → list was rolled back.
               if (state.errorMessage != null) _showError(state.errorMessage!);
+              _findTutorialTask(state.getEntity);
               _maybeStartTour();
             },
           ),
         ],
-        child: PopScope(
-          canPop: !_selectMode,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && _selectMode) _exitSelectMode();
-          },
-          child: Scaffold(
-            backgroundColor: Colors.transparent,
-            floatingActionButton: AnimatedScale(
-              duration: const Duration(milliseconds: 220),
-              scale: _selectMode ? 0 : 1,
-              child: FloatingActionButton.extended(
-                key: _fabKey,
-                onPressed: _selectMode ? null : () => _openSheet(),
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('New task'),
+        child: ListenableBuilder(
+          listenable: _tour,
+          builder: (context, child) => PopScope(
+            canPop: !_selectMode && !_tour.active,
+            onPopInvokedWithResult: (didPop, _) {
+              if (didPop) return;
+              if (_tour.active) {
+                _tour.finish();
+              } else if (_selectMode) {
+                _exitSelectMode();
+              }
+            },
+            child: child!,
+          ),
+          child: SpotlightTour(
+            controller: _tour,
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              floatingActionButton: AnimatedScale(
+                duration: const Duration(milliseconds: 220),
+                scale: _selectMode ? 0 : 1,
+                child: FloatingActionButton.extended(
+                  key: _fabKey,
+                  onPressed: _selectMode ? null : () => _openSheet(),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('New task'),
+                ),
               ),
-            ),
-            body: AuroraBackground(
-              child: BlocBuilder<GetAllBloc, GetAllState>(
-                builder: (context, state) {
-                  final tasks = state is GetAllSuccess
-                      ? state.getEntity.where((t) => !_hiddenIds.contains(t.id)).toList()
-                      : const <GetEntity>[];
+              body: AuroraBackground(
+                child: BlocBuilder<GetAllBloc, GetAllState>(
+                  builder: (context, state) {
+                    final tasks = state is GetAllSuccess
+                        ? state.getEntity
+                              .where((t) => !_hiddenIds.contains(t.id))
+                              .toList()
+                        : const <GetEntity>[];
 
-                  return RefreshIndicator(
-                    onRefresh: _reload,
-                    edgeOffset: 120,
-                    child: CustomScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: BlocBuilder<LogoutBloc, LogoutState>(
-                            builder: (context, logoutState) => HomeHeader(
-                              username: widget.username.trim(),
-                              total: tasks.length,
-                              done: tasks.where((t) => t.completed).length,
-                              selecting: _selectMode,
-                              selectedCount: _selectedIds.length,
-                              loggingOut: logoutState is LogoutLoading,
-                              onToggleTheme: () =>
-                                  sl<ThemeController>().toggle(Theme.of(context).brightness),
-                              onMenu: _onMenu,
-                              onCloseSelect: _exitSelectMode,
-                              onDeleteSelected: _deleteSelected,
-                              themeKey: _themeKey,
-                              progressKey: _progressKey,
+                    return RefreshIndicator(
+                      onRefresh: _reload,
+                      edgeOffset: 120,
+                      child: CustomScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: [
+                          SliverToBoxAdapter(
+                            child: BlocBuilder<LogoutBloc, LogoutState>(
+                              builder: (context, logoutState) => HomeHeader(
+                                username: widget.username.trim(),
+                                total: tasks.length,
+                                done: tasks.where((t) => t.completed).length,
+                                selecting: _selectMode,
+                                selectedCount: _selectedIds.length,
+                                loggingOut: logoutState is LogoutLoading,
+                                onToggleTheme: () => sl<ThemeController>()
+                                    .toggle(Theme.of(context).brightness),
+                                onMenu: _onMenu,
+                                onCloseSelect: _exitSelectMode,
+                                onDeleteSelected: _deleteSelected,
+                                themeKey: _themeKey,
+                                progressKey: _progressKey,
+                              ),
                             ),
                           ),
-                        ),
-                        ..._content(state, tasks),
-                      ],
-                    ),
-                  );
-                },
+                          ..._content(state, tasks),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -403,7 +524,11 @@ class _TodoHomePageState extends State<TodoHomePage> {
         SliverFillRemaining(
           hasScrollBody: false,
           child: _Message(
-            icon: Icon(Icons.cloud_off_rounded, size: 56, color: context.tokens.muted),
+            icon: Icon(
+              Icons.cloud_off_rounded,
+              size: 56,
+              color: context.tokens.muted,
+            ),
             title: "Couldn't load your tasks",
             subtitle: state.message,
             action: OutlinedButton.icon(
@@ -421,7 +546,11 @@ class _TodoHomePageState extends State<TodoHomePage> {
         SliverFillRemaining(
           hasScrollBody: false,
           child: _Message(
-            icon: SvgPicture.asset('assets/icons/no_todo.svg', width: 140, height: 140),
+            icon: SvgPicture.asset(
+              'assets/icons/no_todo.svg',
+              width: 140,
+              height: 140,
+            ),
             title: 'No tasks yet',
             subtitle: 'Tap “New task” to add your first one.',
           ),
@@ -453,13 +582,15 @@ class _TodoHomePageState extends State<TodoHomePage> {
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
           final task = items[i];
-          final isFirst = offset + i == 0;
+          final isTutorial = task.id == _tutorialTaskId;
           return Entrance(
             key: ValueKey('in-${task.id}'),
             index: offset + i,
             child: Dismissible(
               key: ValueKey('task-${task.id}'),
-              direction: _selectMode ? DismissDirection.none : DismissDirection.endToStart,
+              direction: _selectMode
+                  ? DismissDirection.none
+                  : DismissDirection.endToStart,
               onDismissed: (_) => _onSwipeDelete(task),
               background: Container(
                 alignment: Alignment.centerRight,
@@ -468,18 +599,22 @@ class _TodoHomePageState extends State<TodoHomePage> {
                   color: AppPalette.danger,
                   borderRadius: BorderRadius.circular(18),
                 ),
-                child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+                child: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Colors.white,
+                ),
               ),
               child: TaskTile(
-                key: isFirst ? _firstTileKey : null,
-                checkKey: isFirst ? _firstCheckKey : null,
+                key: isTutorial ? _tutorialTileKey : null,
+                checkKey: isTutorial ? _tutorialCheckKey : null,
                 title: task.title,
                 checked: task.completed,
                 selecting: _selectMode,
                 selected: _selectedIds.contains(task.id),
                 onCheck: () => _onCheck(task),
                 onTap: () => _onTapTask(task),
-                onLongPress: () => _selectMode ? _toggleSelect(task) : _startSelect(task),
+                onLongPress: () =>
+                    _selectMode ? _toggleSelect(task) : _startSelect(task),
               ),
             ),
           );
@@ -502,15 +637,29 @@ class _SectionTitle extends StatelessWidget {
       sliver: SliverToBoxAdapter(
         child: Row(
           children: [
-            Text(title, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: t.ink)),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: t.ink,
+              ),
+            ),
             const SizedBox(width: 8),
             AnimatedContainer(
               duration: const Duration(milliseconds: 220),
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
-              decoration: BoxDecoration(color: t.chip, borderRadius: BorderRadius.circular(99)),
+              decoration: BoxDecoration(
+                color: t.chip,
+                borderRadius: BorderRadius.circular(99),
+              ),
               child: Text(
                 '$count',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: t.chipText),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: t.chipText,
+                ),
               ),
             ),
           ],
@@ -526,7 +675,12 @@ class _Message extends StatelessWidget {
   final String subtitle;
   final Widget? action;
 
-  const _Message({required this.icon, required this.title, required this.subtitle, this.action});
+  const _Message({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.action,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -541,7 +695,11 @@ class _Message extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: t.ink),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: t.ink,
+            ),
           ),
           const SizedBox(height: 6),
           Text(

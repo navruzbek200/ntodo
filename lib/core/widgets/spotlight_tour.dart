@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -10,81 +9,154 @@ import 'glass.dart';
 enum TourGesture { tap, swipeLeft, longPress }
 
 class TourStep {
+  final String id;
   final GlobalKey target;
   final IconData icon;
   final String title;
   final String body;
   final TourGesture? gesture;
+
+  /// The user has to perform the action on the highlighted widget; the page
+  /// calls [TourController.next] when it happens. No "Next" button.
+  final bool interactive;
   final double radius;
   final EdgeInsets inflate;
 
   const TourStep({
+    required this.id,
     required this.target,
     required this.icon,
     required this.title,
     required this.body,
     this.gesture,
+    this.interactive = false,
     this.radius = 20,
     this.inflate = const EdgeInsets.all(8),
   });
 }
 
-/// Dims the screen, cuts a spotlight around each step's widget and explains
-/// it in a glass card. Steps whose widget isn't on screen are skipped.
-Future<void> showSpotlightTour(BuildContext context, List<TourStep> steps) {
-  final done = Completer<void>();
-  late final OverlayEntry entry;
-  entry = OverlayEntry(
-    builder: (_) => _TourOverlay(
-      steps: steps,
-      onFinish: () {
-        entry.remove();
-        done.complete();
-      },
-    ),
-  );
-  Overlay.of(context, rootOverlay: true).insert(entry);
-  return done.future;
+/// Drives a [SpotlightTour]. The owning page decides when interactive steps
+/// are done (e.g. "task created") and calls [next].
+class TourController extends ChangeNotifier {
+  List<TourStep> _steps = const [];
+  int? _index;
+  bool _suspended = false;
+
+  /// Called once when the tour ends, finished or skipped.
+  VoidCallback? onFinish;
+
+  bool get active => _index != null;
+  bool get suspended => _suspended;
+  int get index => _index ?? 0;
+  int get length => _steps.length;
+  TourStep? get current => _index == null ? null : _steps[_index!];
+  bool isAt(String id) => current?.id == id;
+
+  void start(List<TourStep> steps) {
+    if (steps.isEmpty) return;
+    _steps = steps;
+    _index = 0;
+    _suspended = false;
+    notifyListeners();
+  }
+
+  void next() {
+    if (_index == null) return;
+    if (_index! + 1 >= _steps.length) return finish();
+    _index = _index! + 1;
+    _suspended = false;
+    notifyListeners();
+  }
+
+  /// Hide the spotlight while the user is busy (e.g. in a bottom sheet).
+  void suspend([bool value = true]) {
+    if (_suspended == value) return;
+    _suspended = value;
+    notifyListeners();
+  }
+
+  void finish() {
+    if (_index == null) return;
+    _index = null;
+    _suspended = false;
+    notifyListeners();
+    onFinish?.call();
+  }
 }
 
-class _TourOverlay extends StatefulWidget {
-  final List<TourStep> steps;
-  final VoidCallback onFinish;
-  const _TourOverlay({required this.steps, required this.onFinish});
+/// Puts a spotlight layer above [child]. Only the highlighted area receives
+/// touches, so users can try each action for real; the rest is dimmed.
+///
+/// Lives inside the page (not the root Overlay) so sheets and dialogs the
+/// user opens from the spotlight appear above it.
+class SpotlightTour extends StatelessWidget {
+  final TourController controller;
+  final Widget child;
+
+  const SpotlightTour({super.key, required this.controller, required this.child});
 
   @override
-  State<_TourOverlay> createState() => _TourOverlayState();
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        child,
+        Positioned.fill(
+          // Sits outside the Scaffold, so it needs its own Material for
+          // text styles and ink effects.
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListenableBuilder(
+              listenable: controller,
+              builder: (_, _) => controller.active
+                  ? _TourLayer(controller: controller)
+                  : const SizedBox.shrink(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _TourOverlayState extends State<_TourOverlay> with TickerProviderStateMixin {
-  late final List<TourStep> _steps =
-      widget.steps.where((s) => s.target.currentContext != null).toList();
-  int _index = 0;
+class _TourLayer extends StatefulWidget {
+  final TourController controller;
+  const _TourLayer({required this.controller});
 
-  late final _fadeIn = AnimationController(vsync: this, duration: const Duration(milliseconds: 350))
-    ..forward();
+  @override
+  State<_TourLayer> createState() => _TourLayerState();
+}
+
+class _TourLayerState extends State<_TourLayer> with TickerProviderStateMixin {
+  late final _fade = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
   late final _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))
     ..repeat();
   late final _gesture = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))
     ..repeat();
+  late final _shake = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
 
-  @override
-  void initState() {
-    super.initState();
-    if (_steps.isEmpty) WidgetsBinding.instance.addPostFrameCallback((_) => widget.onFinish());
-  }
+  /// Rect currently drawn; eases toward the target every frame so the
+  /// spotlight glides between steps and follows moving widgets.
+  Rect? _shown;
+  int _lastIndex = -1;
+
+  TourController get _c => widget.controller;
 
   @override
   void dispose() {
-    _fadeIn.dispose();
+    _fade.dispose();
     _pulse.dispose();
     _gesture.dispose();
+    _shake.dispose();
     super.dispose();
   }
 
-  Rect _rectOf(TourStep step) {
-    final box = step.target.currentContext!.findRenderObject() as RenderBox;
-    final r = box.localToGlobal(Offset.zero) & box.size;
+  Rect? _targetRect(TourStep step) {
+    final target = step.target.currentContext?.findRenderObject();
+    final layer = context.findRenderObject();
+    if (target is! RenderBox || !target.attached || !target.hasSize) return null;
+    if (layer is! RenderBox || !layer.hasSize) return null;
+    final topLeft = layer.globalToLocal(target.localToGlobal(Offset.zero));
+    final r = topLeft & target.size;
     return Rect.fromLTRB(
       r.left - step.inflate.left,
       r.top - step.inflate.top,
@@ -93,93 +165,132 @@ class _TourOverlayState extends State<_TourOverlay> with TickerProviderStateMixi
     );
   }
 
-  Future<void> _next() async {
-    HapticFeedback.selectionClick();
-    if (_index < _steps.length - 1) {
-      setState(() => _index++);
-    } else {
-      await _fadeIn.reverse();
-      widget.onFinish();
-    }
+  bool? _fadeTarget;
+
+  /// Starts the fade after the frame – animations can't be kicked off
+  /// while this builder is running.
+  void _syncFade(bool show) {
+    if (_fadeTarget == show) return;
+    _fadeTarget = show;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      show ? _fade.forward() : _fade.reverse();
+    });
   }
 
-  Future<void> _skip() async {
-    await _fadeIn.reverse();
-    widget.onFinish();
+  Future<void> _close() async {
+    await _fade.reverse();
+    _c.finish();
+  }
+
+  void _onDimTap(TourStep step) {
+    if (step.interactive) {
+      // Nudge: the user has to do the highlighted action.
+      HapticFeedback.mediumImpact();
+      _shake.forward(from: 0);
+    } else if (_c.index == _c.length - 1) {
+      _close();
+    } else {
+      HapticFeedback.selectionClick();
+      _c.next();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_steps.isEmpty) return const SizedBox.shrink();
-    final step = _steps[_index];
-    final size = MediaQuery.sizeOf(context);
+    return AnimatedBuilder(
+      animation: Listenable.merge([_pulse, _shake, _fade]),
+      builder: (context, _) {
+        final step = _c.current;
+        if (step == null) return const SizedBox.shrink();
 
-    return FadeTransition(
-      opacity: _fadeIn,
-      child: Material(
-        type: MaterialType.transparency,
-        child: TweenAnimationBuilder<Rect?>(
-          tween: RectTween(end: _rectOf(step)),
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeOutCubic,
-          builder: (context, hole, _) {
-            final rect = hole!;
-            final below = rect.center.dy < size.height * 0.55;
+        if (_c.index != _lastIndex) {
+          _lastIndex = _c.index;
+          HapticFeedback.selectionClick();
+        }
 
-            return Stack(
+        final target = _targetRect(step);
+        final show = target != null && !_c.suspended;
+        _syncFade(show);
+        if (target != null) {
+          _shown = _shown == null ? target : Rect.lerp(_shown, target, 0.2);
+        }
+        final hole = _shown;
+        if (hole == null) return const SizedBox.shrink();
+
+        final size = MediaQuery.sizeOf(context);
+        final below = hole.center.dy < size.height * 0.55;
+        final shakeDx = math.sin(_shake.value * math.pi * 6) * 10 * (1 - _shake.value);
+
+        return IgnorePointer(
+          ignoring: !show,
+          child: Opacity(
+            opacity: _fade.value,
+            child: Stack(
               children: [
-                // Dim layer with the spotlight hole; any tap advances.
                 Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _next,
-                    child: AnimatedBuilder(
-                      animation: _pulse,
-                      builder: (_, _) => CustomPaint(
-                        painter: _SpotlightPainter(
-                          hole: rect,
-                          radius: step.radius,
-                          pulse: _pulse.value,
-                        ),
-                      ),
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _SpotlightPainter(hole: hole, radius: step.radius, pulse: _pulse.value),
                     ),
                   ),
                 ),
+                // Touch blockers around the hole – the hole itself stays
+                // open so the real widget underneath can be used.
+                ..._blockers(hole, size, () => _onDimTap(step)),
                 if (step.gesture != null)
-                  _GestureHint(rect: rect, gesture: step.gesture!, animation: _gesture),
+                  _GestureHint(rect: hole, gesture: step.gesture!, animation: _gesture),
                 Positioned(
                   left: 20,
                   right: 20,
-                  top: below ? rect.bottom + 20 : null,
-                  bottom: below ? null : size.height - rect.top + 20,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 280),
-                    transitionBuilder: (child, a) => FadeTransition(
-                      opacity: a,
-                      child: SlideTransition(
-                        position: Tween(
-                          begin: Offset(0, below ? 0.08 : -0.08),
-                          end: Offset.zero,
-                        ).animate(a),
-                        child: child,
+                  top: below ? hole.bottom + 18 : null,
+                  bottom: below ? null : size.height - hole.top + 18,
+                  child: Transform.translate(
+                    offset: Offset(shakeDx, 0),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 280),
+                      transitionBuilder: (child, a) => FadeTransition(
+                        opacity: a,
+                        child: SlideTransition(
+                          position: Tween(
+                            begin: Offset(0, below ? 0.08 : -0.08),
+                            end: Offset.zero,
+                          ).animate(a),
+                          child: child,
+                        ),
                       ),
-                    ),
-                    child: _TourCard(
-                      key: ValueKey(_index),
-                      step: step,
-                      index: _index,
-                      count: _steps.length,
-                      onNext: _next,
-                      onSkip: _skip,
+                      child: _TourCard(
+                        key: ValueKey(step.id),
+                        step: step,
+                        index: _c.index,
+                        count: _c.length,
+                        onNext: () => _onDimTap(step),
+                        onSkip: _close,
+                      ),
                     ),
                   ),
                 ),
               ],
-            );
-          },
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  List<Widget> _blockers(Rect hole, Size size, VoidCallback onTap) {
+    Widget block(Rect r) => Positioned.fromRect(
+          rect: r,
+          child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap),
+        );
+    final top = math.max(0.0, hole.top);
+    final bottom = math.min(size.height, hole.bottom);
+    return [
+      block(Rect.fromLTRB(0, 0, size.width, top)),
+      block(Rect.fromLTRB(0, bottom, size.width, size.height)),
+      block(Rect.fromLTRB(0, top, math.max(0, hole.left), bottom)),
+      block(Rect.fromLTRB(math.min(size.width, hole.right), top, size.width, bottom)),
+    ];
   }
 }
 
@@ -317,11 +428,7 @@ class _TourCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   step.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
@@ -354,11 +461,25 @@ class _TourCard extends StatelessWidget {
                   style: TextButton.styleFrom(foregroundColor: const Color(0xCCFFFFFF)),
                   child: const Text('Skip'),
                 ),
-              TextButton(
-                onPressed: onNext,
-                style: TextButton.styleFrom(foregroundColor: AppPalette.accent),
-                child: Text(last ? 'Got it!' : 'Next'),
-              ),
+              if (step.interactive)
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0x33FFB547),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: const Text(
+                    'Your turn 👆',
+                    style: TextStyle(color: AppPalette.accent, fontWeight: FontWeight.w600),
+                  ),
+                )
+              else
+                TextButton(
+                  onPressed: onNext,
+                  style: TextButton.styleFrom(foregroundColor: AppPalette.accent),
+                  child: Text(last ? 'Got it!' : 'Next'),
+                ),
             ],
           ),
         ],
